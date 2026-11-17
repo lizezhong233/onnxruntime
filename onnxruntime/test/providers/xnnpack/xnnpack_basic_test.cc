@@ -329,6 +329,38 @@ TEST(XnnpackEP, TestPoolReluFusionRejectedWithSideConsumer) {
   RunModelTest(build_test_case, "xnnpack_pool_relu_fanout", params);
 }
 
+TEST(XnnpackEP, TestConvClipFusionWithoutMin) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 1, 2, 3}, {-2.f, -0.5f, 0.f, 0.5f, 2.f, 3.f});
+    auto* weight = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.f});
+    auto* conv_output = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Conv", {input, weight}, {conv_output});
+    builder.AddNode("Clip", {conv_output}, {output});
+  };
+
+  std::function<void(const Graph&)> verify = [](const Graph& graph) {
+    int fused_convs = 0;
+    for (const auto& node : graph.Nodes()) {
+      EXPECT_NE(node.OpType(), "Clip");
+      if (node.OpType() == "Conv") {
+        EXPECT_EQ(node.GetExecutionProviderType(), kXnnpackExecutionProvider);
+        const auto& attributes = node.GetAttributes();
+        auto activation = attributes.find("activation");
+        ASSERT_NE(activation, attributes.end());
+        EXPECT_EQ(activation->second.s(), "Clip");
+        ++fused_convs;
+      }
+    }
+    EXPECT_EQ(fused_convs, 1);
+  };
+
+  EPVerificationParams params;
+  params.graph_verifier = &verify;
+  params.fp32_abs_err = 0.f;  // The unit-weight 1x1 convolution preserves the input exactly.
+  RunModelTest(build_test_case, "xnnpack_conv_clip_without_min", params);
+}
+
 static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name,
                                  std::function<void(const Graph&)> graph_verifier = nullptr,
                                  float abs_err_tolerance = .2f) {
