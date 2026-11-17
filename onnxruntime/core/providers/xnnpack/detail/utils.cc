@@ -245,7 +245,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
 
   const auto& activation_type = activation.OpType();
   if (activation_type == "Clip") {
-    min = std::numeric_limits<float>::min();
+    min = std::numeric_limits<float>::lowest();
     max = std::numeric_limits<float>::max();
     bool min_max_are_attributes = activation.SinceVersion() == 1 || activation.SinceVersion() == 6;
 
